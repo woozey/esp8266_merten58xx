@@ -36,3 +36,5 @@ source/include/*
 ### PlatformIO builds and etc. ###
 source/.pio/*
 
+### Freeze credentials file ###
+source/src/connection_credentials.h
