@@ -28,3 +28,7 @@ build/*
 *.vscode/
 *tsconfig.json
 *jsconfig.json
+
+### 3d party libraries ###
+source/lib/*
+source/include/*
