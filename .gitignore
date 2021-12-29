@@ -32,3 +32,7 @@ build/*
 ### 3d party libraries ###
 source/lib/*
 source/include/*
+
+### PlatformIO builds and etc. ###
+source/.pio/*
+
