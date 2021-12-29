@@ -1,0 +1,30 @@
+syntax: glob
+*.spyderworkspace
+*.coverage
+*/MANIFEST
+*.hook_ignore*
+*.so
+*.pyc
+*.pyd
+*.swp
+*.bak
+*.deb
+*.swo
+build/*
+*.egg-info/*
+~.vimrc
+*.spyderproject
+*Thumbs.db
+*.DS_Store
+.ropeproject/*
+*.idea/*
+*.pyproj
+*/.cache/
+*/.spyproject/
+
+### Code ###
+# Visual Studio Code - https://code.visualstudio.com/
+*.settings/
+*.vscode/
+*tsconfig.json
+*jsconfig.json
