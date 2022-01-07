@@ -5,6 +5,13 @@
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <connection_credentials.h>
+#include <config.h>
+
+// TODO: webserver for configuration
+// TODO: save configuration to EEPROM
+// TODO: OTA
+// TODO: check millis overflow
+// TODO: AP if not connected?
 
 // General:
 const char *version = "0.1dev";
@@ -24,17 +31,24 @@ String input3;
 // MQTT:
 // int mqtt_eep_addr = udp_eep_addr + 18 +1;
 
-const char *mqtt_topic = "microphone_01";
-// char *mic_topic;
-// char *status_topic;
-const char *mic_topic = "microphone_01/data";
-const char *status_topic = "microphone_01/status";
-String mqtt_name = "vmespmic";
-PubSubClient client(wclient);
 
-// Button
-const int button_pin = 5;
-int button_state = 0;
+// char *MQTT_SET_TOPIC;
+// char *MQTT_STATUS_TOPIC;
+
+String mqtt_name = "vmespmic";
+PubSubClient mqtt_client(wclient);
+
+// Buttons
+int button_up_state;
+int button_down_state;
+
+// States and motion
+String motion_state = "idle"; 
+unsigned long motion_start_time;
+char *set_state = (char *)"stop";
+char *current_state = (char *)"stop";
+int move_up = 0;
+int move_down = 0;
 
 // HTML web page to handle 3 input fields (input1, input2, input3)
 const char index_html[] PROGMEM = R"rawliteral(
@@ -88,11 +102,8 @@ void callback(char *topic, byte *payload, int length) {
    Serial.print("Message arrived in topic: ");
    Serial.println(topic);
    Serial.print("Message:");
-   for (int i = 0; i < length; i++) {
-       Serial.print((char) payload[i]);
-   }
+   set_state = (char*)payload;
    Serial.println();
-   Serial.println("-----------------------");
 }
 
 String publish_mqtt(const char* data, PubSubClient client, const char* topic){
@@ -161,6 +172,13 @@ void start_mqtt(PubSubClient client, IPAddress mqtt_server, const int mqtt_port,
         }
 }
 
+void publish_mqtt_states(PubSubClient mqtt_client, char *set_state, char *current_state){
+  if (mqtt_client.connected()){
+    publish_mqtt(set_state, mqtt_client, MQTT_SET_TOPIC);
+    publish_mqtt(current_state, mqtt_client, MQTT_STATE_TOPIC);
+  }
+}
+
 // ======= SETUP =======
 void setup() {
   Serial.begin(115200);
@@ -225,17 +243,80 @@ void setup() {
   // EEPROM.commit();
   // EEPROM.get(mqtt_eep_addr, mqtt_data);
   IPAddress mqtt_server(MQTT_DATA.ip[0], MQTT_DATA.ip[1], MQTT_DATA.ip[2], MQTT_DATA.ip[3]);
-  start_mqtt(client, mqtt_server, MQTT_DATA.port, MQTT_DATA.user, MQTT_DATA.pass);
+  start_mqtt(mqtt_client, mqtt_server, MQTT_DATA.port, MQTT_DATA.user, MQTT_DATA.pass);
+  if (mqtt_client.connected()){
+    publish_mqtt("ready", mqtt_client, MQTT_STATUS_TOPIC);
+    publish_mqtt(current_state, mqtt_client, MQTT_STATE_TOPIC);
+  }
+  mqtt_client.subscribe(MQTT_SET_TOPIC);
 }
 // ======= LOOP ======
 void loop() {
-  button_state=digitalRead(button_pin);
-  if (button_state == HIGH){
-    Serial.print("Buuton ");
-    Serial.print(button_pin);
-    Serial.println(" is high.");
-    if ((client.connected() && false) ){
-      publish_mqtt("up", client, status_topic);
+  button_up_state = digitalRead(BUTTON_UP);
+  button_down_state = digitalRead(BUTTON_DOWN);
+  
+  // === Prepare MQTT motion trigers ===
+  if (set_state != current_state){
+    move_down = strcmp(set_state, "closed");
+    move_up = strcmp(set_state, "open");
+  }
+  else{
+    move_up = 0;
+    move_down = 0;
+  }
+
+  //  === Motion states: idle or moving ===
+  if (motion_state == "idle"){
+    
+    // Move UP
+    if ((button_up_state == HIGH && !strcmp(current_state, "open")) || move_up){
+      digitalWrite(RELAY_UP, HIGH);
+      motion_state = "moving";
+      motion_start_time = millis() * 1000;
+      current_state = (char *)"open";
+      set_state = (char *)"open";
+    }
+    
+    // Move DOWN
+    if ((button_down_state == HIGH && !strcmp(current_state, "closed")) || move_down){
+      digitalWrite(RELAY_DOWN, HIGH);
+      motion_state = "moving";
+      motion_start_time = millis() * 1000;
+      current_state = (char *)"closed";
+      set_state = (char *)"closed";
+    }
+  }
+  // Stop moving if button pressed or if sufficent time elapsed
+  if (motion_state == "moving"){
+    if ((motion_start_time + STOP_AFTER) >= millis()*1000 || button_up_state == HIGH || button_down_state == HIGH){
+      digitalWrite(RELAY_UP, LOW);
+      digitalWrite(RELAY_DOWN, LOW);
+      publish_mqtt_states(mqtt_client, set_state, current_state);
+    }
+  }
+
+  if (LED_STATUS!=0){
+    if (WiFi.status() != WL_CONNECTED){
+      digitalWrite(LED_STATUS, HIGH);
+      delay(200);
+      digitalWrite(LED_STATUS, LOW);
+      delay(200);
+      digitalWrite(LED_STATUS, HIGH);
+      delay(200);
+      digitalWrite(LED_STATUS, LOW);
+      delay(200);
+      digitalWrite(LED_STATUS, HIGH);
+      delay(200);
+      digitalWrite(LED_STATUS, LOW);
+    }
+    else if (!mqtt_client.connected()){
+      digitalWrite(LED_STATUS, HIGH);
+      delay(100);
+      digitalWrite(LED_STATUS, LOW);
+      delay(100);
+      digitalWrite(LED_STATUS, HIGH);
+      delay(100);
+      digitalWrite(LED_STATUS, LOW);
     }
   }
 }
