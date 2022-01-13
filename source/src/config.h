@@ -1,18 +1,24 @@
 #include <Arduino.h>
 
-// === MQTT ===
-char *DEVICE_NAME = (char *)"blinds_living_room1";
+// === Logger ===
+String LOG_LEVEL  = "debug";
 
-char *MQTT_STATE_TOPIC = strcat(DEVICE_NAME, "/current_state");
-char *MQTT_SET_TOPIC = strcat(DEVICE_NAME, "/set_point");
-char *MQTT_STATUS_TOPIC = strcat(DEVICE_NAME, "/status");
+// === WiFi ===
+const char *WIFI_MODE = (char *)"normal";
+
+// === MQTT ===
+String DEVICE_NAME = "blinds_living_room1";
+
+String MQTT_STATE_TOPIC = DEVICE_NAME + "/current_state";
+String MQTT_SET_TOPIC = DEVICE_NAME + "/set_point";
+String MQTT_STATUS_TOPIC = DEVICE_NAME + "/status";
 
 // === GPIO Settings ===
 const int BUTTON_UP = 5;
-const int BUTTON_DOWN = 6;
-const int RELAY_UP = 7;
-const int RELAY_DOWN = 8;
-const int LED_STATUS = 9;
+const int BUTTON_DOWN = 12;
+const int RELAY_UP = 2;
+const int RELAY_DOWN = 16;
+const int LED_STATUS = 0;
 
 // === Motion ===
 const unsigned long STOP_AFTER = 10; // time after the reley seconds 

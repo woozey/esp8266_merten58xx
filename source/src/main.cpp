@@ -6,6 +6,7 @@
 #include <ESPAsyncWebServer.h>
 #include <connection_credentials.h>
 #include <config.h>
+#include <logger.h>
 
 // TODO: webserver for configuration
 // TODO: save configuration to EEPROM
@@ -15,8 +16,9 @@
 
 // General:
 const char *version = "0.1dev";
-const int init_delay = 5000;  // delay before initialization
-const int timeout = 10;   // connection timeout
+const int init_delay = 10000;  // delay before initialization
+const int timeout = 20;   // connection timeout
+Logger logger(LOG_LEVEL, "serial", 0);
 
 // WIFI:
 // int wifi_eep_addr = 0;
@@ -32,8 +34,9 @@ String input3;
 // int mqtt_eep_addr = udp_eep_addr + 18 +1;
 
 
-// char *MQTT_SET_TOPIC;
-// char *MQTT_STATUS_TOPIC;
+char mqtt_set_topic[24];
+char mqtt_status_topic[24];
+char mqtt_state_topic[24];
 
 String mqtt_name = "vmespmic";
 PubSubClient mqtt_client(wclient);
@@ -131,9 +134,15 @@ String print_serial_cha(const char* data){
 // }
 
 void start_wifi(const char *ssid, const char *pass){
+  // WiFi.hostname("esp_mserten_01");
   WiFi.begin(ssid, pass);             // Connect to the network
   Serial.print("Connecting to ");
-  Serial.print(ssid); Serial.println(" ...");
+  Serial.print(ssid);
+  if (WIFI_MODE == (char *)"sta"){
+    WiFi.mode(WIFI_STA);
+    Serial.print(", mode STA");
+  }
+  Serial.println(" ...");
   int i = 0;
   while ((WiFi.status() != WL_CONNECTED) && (i < timeout)) { // Wait for the Wi-Fi to connect
     delay(1000);
@@ -174,8 +183,8 @@ void start_mqtt(PubSubClient client, IPAddress mqtt_server, const int mqtt_port,
 
 void publish_mqtt_states(PubSubClient mqtt_client, char *set_state, char *current_state){
   if (mqtt_client.connected()){
-    publish_mqtt(set_state, mqtt_client, MQTT_SET_TOPIC);
-    publish_mqtt(current_state, mqtt_client, MQTT_STATE_TOPIC);
+    publish_mqtt(set_state, mqtt_client, mqtt_set_topic);
+    publish_mqtt(current_state, mqtt_client, mqtt_state_topic);
   }
 }
 
@@ -184,8 +193,7 @@ void setup() {
   Serial.begin(115200);
   delay(init_delay);
 
-  Serial.print("Starting esp8266_merten58xx version ");
-  Serial.println(version);
+  logger.info("Starting esp8266_merten58xx version " + (String)version);
   
   // ===== WiFi =====
   EEPROM.begin(512);
@@ -242,13 +250,17 @@ void setup() {
   // EEPROM.put(mqtt_eep_addr, MQTT_DATA);
   // EEPROM.commit();
   // EEPROM.get(mqtt_eep_addr, mqtt_data);
+  MQTT_SET_TOPIC.toCharArray(mqtt_set_topic, 24);
+  MQTT_STATUS_TOPIC.toCharArray(mqtt_status_topic, 24);
+  MQTT_STATE_TOPIC.toCharArray(mqtt_state_topic, 24);
+
   IPAddress mqtt_server(MQTT_DATA.ip[0], MQTT_DATA.ip[1], MQTT_DATA.ip[2], MQTT_DATA.ip[3]);
   start_mqtt(mqtt_client, mqtt_server, MQTT_DATA.port, MQTT_DATA.user, MQTT_DATA.pass);
   if (mqtt_client.connected()){
-    publish_mqtt("ready", mqtt_client, MQTT_STATUS_TOPIC);
-    publish_mqtt(current_state, mqtt_client, MQTT_STATE_TOPIC);
+    publish_mqtt("ready", mqtt_client, mqtt_status_topic);
+    publish_mqtt(current_state, mqtt_client, mqtt_state_topic);
   }
-  mqtt_client.subscribe(MQTT_SET_TOPIC);
+  mqtt_client.subscribe(mqtt_set_topic);
 }
 // ======= LOOP ======
 void loop() {
@@ -257,8 +269,8 @@ void loop() {
   
   // === Prepare MQTT motion trigers ===
   if (set_state != current_state){
-    move_down = strcmp(set_state, "closed");
-    move_up = strcmp(set_state, "open");
+    move_down = (set_state == (char *)"closed");
+    move_up = (set_state == (char *)"open");
   }
   else{
     move_up = 0;
@@ -269,7 +281,8 @@ void loop() {
   if (motion_state == "idle"){
     
     // Move UP
-    if ((button_up_state == HIGH && !strcmp(current_state, "open")) || move_up){
+    if ((button_up_state == HIGH && !(current_state == (char *)"open")) || move_up){
+      logger.debug("Start moving UP.");
       digitalWrite(RELAY_UP, HIGH);
       motion_state = "moving";
       motion_start_time = millis() * 1000;
@@ -278,7 +291,8 @@ void loop() {
     }
     
     // Move DOWN
-    if ((button_down_state == HIGH && !strcmp(current_state, "closed")) || move_down){
+    if ((button_down_state == HIGH && !(current_state == (char *)"closed")) || move_down){
+      logger.debug("Start moving DOWN.");
       digitalWrite(RELAY_DOWN, HIGH);
       motion_state = "moving";
       motion_start_time = millis() * 1000;
@@ -289,6 +303,7 @@ void loop() {
   // Stop moving if button pressed or if sufficent time elapsed
   if (motion_state == "moving"){
     if ((motion_start_time + STOP_AFTER) >= millis()*1000 || button_up_state == HIGH || button_down_state == HIGH){
+      logger.debug("Stop moving.");
       digitalWrite(RELAY_UP, LOW);
       digitalWrite(RELAY_DOWN, LOW);
       publish_mqtt_states(mqtt_client, set_state, current_state);
