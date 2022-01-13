@@ -15,7 +15,7 @@ String MQTT_STATUS_TOPIC = DEVICE_NAME + "/status";
 
 // === GPIO Settings ===
 const int BUTTON_UP = 5;
-const int BUTTON_DOWN = 12;
+const int BUTTON_DOWN = 13;
 const int RELAY_UP = 2;
 const int RELAY_DOWN = 16;
 const int LED_STATUS = 0;

@@ -16,7 +16,7 @@
 
 // General:
 const char *version = "0.1dev";
-const int init_delay = 10000;  // delay before initialization
+const int init_delay = 3000;  // delay before initialization
 const int timeout = 20;   // connection timeout
 Logger logger(LOG_LEVEL, "serial", 0);
 
@@ -34,9 +34,9 @@ String input3;
 // int mqtt_eep_addr = udp_eep_addr + 18 +1;
 
 
-char mqtt_set_topic[24];
-char mqtt_status_topic[24];
-char mqtt_state_topic[24];
+char mqtt_set_topic[50];
+char mqtt_status_topic[50];
+char mqtt_state_topic[50];
 
 String mqtt_name = "vmespmic";
 PubSubClient mqtt_client(wclient);
@@ -47,9 +47,15 @@ int button_down_state;
 
 // States and motion
 String motion_state = "idle"; 
+const String STATE_OPEN = "open";
+const String STATE_CLOSED = "closed";
+const String STATE_STOP = "stop";
+String set_state = STATE_STOP;
+String current_state = STATE_STOP;
 unsigned long motion_start_time;
-char *set_state = (char *)"stop";
-char *current_state = (char *)"stop";
+const int SB_LEN = 10;
+char set_state_c[SB_LEN];
+char current_state_c[SB_LEN];
 int move_up = 0;
 int move_down = 0;
 
@@ -101,28 +107,21 @@ String processor(const String& var){
   return String();
 }
 
-void callback(char *topic, byte *payload, int length) {
+void callback(char* topic, byte* payload, unsigned int length) {
    Serial.print("Message arrived in topic: ");
    Serial.println(topic);
-   Serial.print("Message:");
-   set_state = (char*)payload;
-   Serial.println();
+   Serial.print("Message: ");
+   String msg;
+   for (unsigned int i = 0; i < length; i++) {
+     msg += (char)payload[i];
+   }
+   Serial.println(msg);
+   set_state = msg;
 }
 
 String publish_mqtt(const char* data, PubSubClient client, const char* topic){
   client.publish(topic, data);
   Serial.println("Data sent to MQTT server");
-  return "";
-}
-
-String print_serial_str(String data){
-  Serial.print('\n');
-  Serial.println(data);
-  return "";
-}
-
-String print_serial_cha(const char* data){
-  Serial.println(data);
   return "";
 }
 
@@ -161,30 +160,30 @@ void start_wifi(const char *ssid, const char *pass){
   }
 }
 
-void start_mqtt(PubSubClient client, IPAddress mqtt_server, const int mqtt_port, const char *mqtt_user, const char *mqtt_pass){
-  client.setServer(mqtt_server, mqtt_port);
-  client.setCallback(callback);
+void start_mqtt(IPAddress mqtt_server, const int mqtt_port, const char *mqtt_user, const char *mqtt_pass){
+  mqtt_client.setServer(mqtt_server, mqtt_port);
+  mqtt_client.setCallback(callback);
   int i = 0;
   Serial.print("Connecting to mqtt broker, attempt: ");
-  while ((!client.connected()) && (i < timeout) && (WiFi.status() == WL_CONNECTED)) {
+  while ((!mqtt_client.connected()) && (i < timeout) && (WiFi.status() == WL_CONNECTED)) {
     // Serial.println('\n');
     Serial.print(++i); Serial.print(' ');
-    client.connect("esp8266-client", mqtt_user, mqtt_pass);
+    mqtt_client.connect("esp8266-client", mqtt_user, mqtt_pass);
     delay(1000);
   }
   Serial.print('\n');
-  if (client.connected()) {
+  if (mqtt_client.connected()) {
         Serial.println("Mqtt broker connected");
     } else {
         Serial.print("Connection timeout. Failed with state: ");
-        Serial.println(client.state());
+        Serial.println(mqtt_client.state());
         }
 }
 
-void publish_mqtt_states(PubSubClient mqtt_client, char *set_state, char *current_state){
+void publish_mqtt_states(char *set_state, char *current_state){
   if (mqtt_client.connected()){
-    publish_mqtt(set_state, mqtt_client, mqtt_set_topic);
-    publish_mqtt(current_state, mqtt_client, mqtt_state_topic);
+    mqtt_client.publish(mqtt_set_topic, set_state);
+    mqtt_client.publish(mqtt_state_topic, current_state);
   }
 }
 
@@ -250,27 +249,36 @@ void setup() {
   // EEPROM.put(mqtt_eep_addr, MQTT_DATA);
   // EEPROM.commit();
   // EEPROM.get(mqtt_eep_addr, mqtt_data);
-  MQTT_SET_TOPIC.toCharArray(mqtt_set_topic, 24);
-  MQTT_STATUS_TOPIC.toCharArray(mqtt_status_topic, 24);
-  MQTT_STATE_TOPIC.toCharArray(mqtt_state_topic, 24);
+  MQTT_SET_TOPIC.toCharArray(mqtt_set_topic, 50);
+  MQTT_STATUS_TOPIC.toCharArray(mqtt_status_topic, 50);
+  MQTT_STATE_TOPIC.toCharArray(mqtt_state_topic, 50);
 
   IPAddress mqtt_server(MQTT_DATA.ip[0], MQTT_DATA.ip[1], MQTT_DATA.ip[2], MQTT_DATA.ip[3]);
-  start_mqtt(mqtt_client, mqtt_server, MQTT_DATA.port, MQTT_DATA.user, MQTT_DATA.pass);
+  start_mqtt(mqtt_server, MQTT_DATA.port, MQTT_DATA.user, MQTT_DATA.pass);
   if (mqtt_client.connected()){
-    publish_mqtt("ready", mqtt_client, mqtt_status_topic);
-    publish_mqtt(current_state, mqtt_client, mqtt_state_topic);
+    logger.debug("MQTT: Publish status and current state.");
+    mqtt_client.publish(mqtt_status_topic, "ready");
+    set_state.toCharArray(set_state_c, SB_LEN);
+    current_state.toCharArray(current_state_c, SB_LEN);
+    publish_mqtt_states(set_state_c, current_state_c);
+    // mqtt_client.publish(mqtt_state_topic, current_state);
   }
+  logger.debug("Subscribe to set topic.");
   mqtt_client.subscribe(mqtt_set_topic);
 }
 // ======= LOOP ======
 void loop() {
+  // logger.debug("LOOP: Start.");
+  mqtt_client.loop();
   button_up_state = digitalRead(BUTTON_UP);
   button_down_state = digitalRead(BUTTON_DOWN);
   
   // === Prepare MQTT motion trigers ===
-  if (set_state != current_state){
-    move_down = (set_state == (char *)"closed");
-    move_up = (set_state == (char *)"open");
+  if (!set_state.equalsIgnoreCase(current_state)){
+    move_down = (set_state.equalsIgnoreCase(STATE_CLOSED));
+    logger.debug_w_int("Set state change, down:", move_down);
+    move_up = (set_state.equalsIgnoreCase(STATE_OPEN));
+    logger.debug_w_int("Set state change, up:", move_up);
   }
   else{
     move_up = 0;
@@ -278,35 +286,39 @@ void loop() {
   }
 
   //  === Motion states: idle or moving ===
-  if (motion_state == "idle"){
+  if (motion_state.equalsIgnoreCase("idle")){
     
     // Move UP
-    if ((button_up_state == HIGH && !(current_state == (char *)"open")) || move_up){
+    if ((button_up_state == HIGH && !(current_state.equalsIgnoreCase(STATE_OPEN))) || move_up){
       logger.debug("Start moving UP.");
       digitalWrite(RELAY_UP, HIGH);
       motion_state = "moving";
-      motion_start_time = millis() * 1000;
-      current_state = (char *)"open";
-      set_state = (char *)"open";
+      motion_start_time = millis() / 1000;
+      current_state = STATE_OPEN;
+      set_state = STATE_OPEN;
     }
     
     // Move DOWN
-    if ((button_down_state == HIGH && !(current_state == (char *)"closed")) || move_down){
+    if ((button_down_state == HIGH && !(current_state.equalsIgnoreCase(STATE_CLOSED))) || move_down){
       logger.debug("Start moving DOWN.");
       digitalWrite(RELAY_DOWN, HIGH);
       motion_state = "moving";
-      motion_start_time = millis() * 1000;
-      current_state = (char *)"closed";
-      set_state = (char *)"closed";
+      motion_start_time = millis() / 1000;
+      current_state = STATE_CLOSED;
+      set_state = STATE_CLOSED;
     }
   }
   // Stop moving if button pressed or if sufficent time elapsed
-  if (motion_state == "moving"){
-    if ((motion_start_time + STOP_AFTER) >= millis()*1000 || button_up_state == HIGH || button_down_state == HIGH){
+  if (motion_state.equalsIgnoreCase("moving")){
+    // logger.debug_w_int("motion_start=", (int)motion_start_time);
+    if ((motion_start_time + STOP_AFTER) <= (millis()/1000) || button_up_state == HIGH || button_down_state == HIGH){
       logger.debug("Stop moving.");
+      motion_state = "idle";
       digitalWrite(RELAY_UP, LOW);
       digitalWrite(RELAY_DOWN, LOW);
-      publish_mqtt_states(mqtt_client, set_state, current_state);
+      set_state.toCharArray(set_state_c, SB_LEN);
+      current_state.toCharArray(current_state_c, SB_LEN);
+      publish_mqtt_states(set_state_c, current_state_c);
     }
   }
 
