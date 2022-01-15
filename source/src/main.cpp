@@ -194,6 +194,14 @@ void setup() {
 
   logger.info("Starting esp8266_merten58xx version " + (String)version);
   
+  // ===== Pins
+  pinMode(BUTTON_UP, INPUT);
+  pinMode(BUTTON_DOWN, INPUT);
+  pinMode(RELAY_UP, OUTPUT);
+  digitalWrite(RELAY_UP, LOW);
+  pinMode(RELAY_DOWN, OUTPUT);
+  digitalWrite(RELAY_DOWN, LOW);
+
   // ===== WiFi =====
   EEPROM.begin(512);
   // EEPROM.put(wifi_eep_addr, WIFI_DATA);
