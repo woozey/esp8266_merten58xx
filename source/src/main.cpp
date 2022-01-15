@@ -1,4 +1,3 @@
-#include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <EEPROM.h>
@@ -7,6 +6,7 @@
 #include <connection_credentials.h>
 #include <config.h>
 #include <logger.h>
+#include <ota.h>
 
 // TODO: webserver for configuration
 // TODO: save configuration to EEPROM
@@ -15,7 +15,7 @@
 // TODO: AP if not connected?
 
 // General:
-const char *version = "0.1dev";
+const char *version = "0.1ota";
 const int init_delay = 3000;  // delay before initialization
 const int timeout = 20;   // connection timeout
 Logger logger(LOG_LEVEL, "serial", 0);
@@ -194,12 +194,23 @@ void setup() {
 
   logger.info("Starting esp8266_merten58xx version " + (String)version);
   
+  // ===== Pins
+  pinMode(BUTTON_UP, INPUT);
+  pinMode(BUTTON_DOWN, INPUT);
+  pinMode(RELAY_UP, OUTPUT);
+  digitalWrite(RELAY_UP, LOW);
+  pinMode(RELAY_DOWN, OUTPUT);
+  digitalWrite(RELAY_DOWN, LOW);
+
   // ===== WiFi =====
   EEPROM.begin(512);
   // EEPROM.put(wifi_eep_addr, WIFI_DATA);
   // EEPROM.commit();
   // EEPROM.get(wifi_eep_addr, WIFI_DATA);
   start_wifi(WIFI_DATA.ssid, WIFI_DATA.pass);
+
+  // ===== OTA =====
+  setupOTA();
 
   // ===== Web =====
   // Send web page with input fields to client
@@ -269,6 +280,7 @@ void setup() {
 // ======= LOOP ======
 void loop() {
   // logger.debug("LOOP: Start.");
+  ArduinoOTA.handle();
   mqtt_client.loop();
   button_up_state = digitalRead(BUTTON_UP);
   button_down_state = digitalRead(BUTTON_DOWN);
