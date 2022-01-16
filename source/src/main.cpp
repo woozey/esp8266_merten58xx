@@ -7,6 +7,7 @@
 #include <config.h>
 #include <logger.h>
 #include <ota.h>
+#include <Button.h>
 
 // TODO: webserver for configuration
 // TODO: save configuration to EEPROM
@@ -44,6 +45,8 @@ PubSubClient mqtt_client(wclient);
 // Buttons
 int button_up_state;
 int button_down_state;
+Button button_up(BUTTON_UP);
+Button button_down(BUTTON_DOWN);
 
 // States and motion
 String motion_state = "idle"; 
@@ -190,17 +193,18 @@ void publish_mqtt_states(char *set_state, char *current_state){
 // ======= SETUP =======
 void setup() {
   Serial.begin(115200);
-  delay(init_delay);
 
-  logger.info("Starting esp8266_merten58xx version " + (String)version);
-  
   // ===== Pins
-  pinMode(BUTTON_UP, INPUT);
-  pinMode(BUTTON_DOWN, INPUT);
+  // pinMode(BUTTON_UP, INPUT);
+  // pinMode(BUTTON_DOWN, INPUT);
   pinMode(RELAY_UP, OUTPUT);
   digitalWrite(RELAY_UP, LOW);
   pinMode(RELAY_DOWN, OUTPUT);
   digitalWrite(RELAY_DOWN, LOW);
+  
+  delay(init_delay);
+
+  logger.info("Starting esp8266_merten58xx version " + (String)version);
 
   // ===== WiFi =====
   EEPROM.begin(512);
@@ -282,8 +286,8 @@ void loop() {
   // logger.debug("LOOP: Start.");
   ArduinoOTA.handle();
   mqtt_client.loop();
-  button_up_state = digitalRead(BUTTON_UP);
-  button_down_state = digitalRead(BUTTON_DOWN);
+  // button_up_state = digitalRead(BUTTON_UP);
+  // button_down_state = digitalRead(BUTTON_DOWN);
   
   // === Prepare MQTT motion trigers ===
   if (!set_state.equalsIgnoreCase(current_state)){
@@ -301,7 +305,7 @@ void loop() {
   if (motion_state.equalsIgnoreCase("idle")){
     
     // Move UP
-    if ((button_up_state == HIGH && !(current_state.equalsIgnoreCase(STATE_OPEN))) || move_up){
+    if ((button_up.isToggled(LOW) && !(current_state.equalsIgnoreCase(STATE_OPEN))) || move_up){
       logger.debug("Start moving UP.");
       digitalWrite(RELAY_UP, HIGH);
       motion_state = "moving";
@@ -311,7 +315,7 @@ void loop() {
     }
     
     // Move DOWN
-    if ((button_down_state == HIGH && !(current_state.equalsIgnoreCase(STATE_CLOSED))) || move_down){
+    if ((button_down.isToggled(LOW) && !(current_state.equalsIgnoreCase(STATE_CLOSED))) || move_down){
       logger.debug("Start moving DOWN.");
       digitalWrite(RELAY_DOWN, HIGH);
       motion_state = "moving";
@@ -323,9 +327,20 @@ void loop() {
   // Stop moving if button pressed or if sufficent time elapsed
   if (motion_state.equalsIgnoreCase("moving")){
     // logger.debug_w_int("motion_start=", (int)motion_start_time);
-    if ((motion_start_time + STOP_AFTER) <= (millis()/1000) || button_up_state == HIGH || button_down_state == HIGH){
+    if ((motion_start_time + STOP_AFTER) <= (millis()/1000)){
       logger.debug("Stop moving.");
       motion_state = "idle";
+      digitalWrite(RELAY_UP, LOW);
+      digitalWrite(RELAY_DOWN, LOW);
+      set_state.toCharArray(set_state_c, SB_LEN);
+      current_state.toCharArray(current_state_c, SB_LEN);
+      publish_mqtt_states(set_state_c, current_state_c);
+    }
+    else if (button_up.isToggled(LOW) || button_down.isToggled(LOW)){
+      logger.debug("Stop moving.");
+      motion_state = "idle";
+      current_state = STATE_STOP;
+      set_state = STATE_STOP;
       digitalWrite(RELAY_UP, LOW);
       digitalWrite(RELAY_DOWN, LOW);
       set_state.toCharArray(set_state_c, SB_LEN);
