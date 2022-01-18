@@ -21,3 +21,14 @@ you will have to the configuration accordingly.
 
 Connect ESP8266 and other parts of circuit according to the scheme below.
 ![](docs/electronic_scheme_bb.png)
+
+## Housing
+Housing can be 3D printed with generic PLA filament. Original CAD-model and STL-files can be found in `cad` folder.
+It consitst of  main housing body (white) and separator lid (red). The lid snaps into the housing and have opennings for wiring.
+
+![](docs/housing_with_separator.png)
+
+Top part of the housing features holes for pushbuttons and indicators for motion directions. After wiring the controller to relays, 
+the housing can be snapped into the relay fitting on the wall.
+
+![](docs/housing_front.png)
